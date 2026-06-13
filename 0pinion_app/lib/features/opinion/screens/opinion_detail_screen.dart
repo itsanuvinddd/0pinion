@@ -10,6 +10,10 @@ import '../../../core/widgets/primary_button.dart';
 import '../../../data/models/argument.dart';
 import '../../../core/providers/opinion_provider.dart';
 import '../../../core/providers/argument_provider.dart';
+import '../../../core/providers/supabase_provider.dart';
+import '../../../core/utils/error_handler.dart';
+import '../../../data/repositories/argument_repository.dart';
+import '../../../data/repositories/opinion_repository.dart';
 
 /// Opinion Detail screen — full opinion + debate zone
 class OpinionDetailScreen extends ConsumerStatefulWidget {
@@ -45,6 +49,11 @@ class _OpinionDetailScreenState extends ConsumerState<OpinionDetailScreen>
     final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
 
     final opinionsAsync = ref.watch(feedOpinionsProvider);
+    final currentUser = ref.watch(currentUserProvider);
+
+    final opinions = opinionsAsync.value;
+    final opinion = opinions?.where((o) => o.id == widget.opinionId).firstOrNull;
+    final isAuthor = currentUser != null && opinion != null && currentUser.id == opinion.authorId;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,6 +62,42 @@ class _OpinionDetailScreenState extends ConsumerState<OpinionDetailScreen>
           onPressed: () => context.pop(),
         ),
         actions: [
+          if (isAuthor)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Opinion'),
+                    content: const Text('Are you sure you want to delete this opinion? This cannot be undone and your reputation will be updated.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  try {
+                    await ref.read(opinionRepositoryProvider).deleteOpinion(widget.opinionId);
+                    ref.invalidate(feedOpinionsProvider);
+                    if (context.mounted) {
+                      context.pop();
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      AppErrorHandler.showErrorDialog(context, e);
+                    }
+                  }
+                }
+              },
+            ),
           IconButton(
             icon: Icon(Icons.flag_outlined, color: secondaryText),
             onPressed: () => context.push('/report/opinion/${widget.opinionId}'),
@@ -208,7 +253,10 @@ class _OpinionDetailScreenState extends ConsumerState<OpinionDetailScreen>
 
                       return Column(
                         children: filtered.map((arg) {
-                          return _ArgumentTile(argument: arg);
+                          return _ArgumentTile(
+                            argument: arg,
+                            opinionId: opinion.id,
+                          );
                         }).toList(),
                       );
                     },
@@ -245,17 +293,22 @@ class _OpinionDetailScreenState extends ConsumerState<OpinionDetailScreen>
   }
 }
 
-class _ArgumentTile extends StatelessWidget {
+class _ArgumentTile extends ConsumerWidget {
   final Argument argument;
+  final String opinionId;
 
-  const _ArgumentTile({required this.argument});
+  const _ArgumentTile({
+    required this.argument,
+    required this.opinionId,
+  });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryText = isDark ? AppColors.darkPrimaryText : AppColors.lightPrimaryText;
     final secondaryText = isDark ? AppColors.darkSecondaryText : AppColors.lightSecondaryText;
     final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
+    final currentUser = ref.watch(currentUserProvider);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -308,6 +361,42 @@ class _ArgumentTile extends StatelessWidget {
                 onTap: () => context.push('/report/argument/${argument.id}'),
                 child: Text('Report', style: AppTypography.caption(color: secondaryText)),
               ),
+              if (currentUser != null && currentUser.id == argument.authorId) ...[
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Argument'),
+                        content: const Text('Are you sure you want to delete this argument? This will also revert your stance and reduce your reputation score.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      try {
+                        await ref.read(argumentRepositoryProvider).deleteArgument(argument.id);
+                        ref.invalidate(opinionArgumentsProvider(opinionId));
+                        ref.invalidate(feedOpinionsProvider);
+                      } catch (e) {
+                        if (context.mounted) {
+                          AppErrorHandler.showErrorDialog(context, e);
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                ),
+              ],
             ],
           ),
         ],

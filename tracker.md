@@ -84,7 +84,7 @@ This file tracks the implementation progress of **0pinion**, a monochrome, text-
   - [ ] Configure read permissions for opinions, arguments, zeroes
   - [ ] Configure write permissions (anonymous features must secure creator identity)
 - [ ] PostgreSQL Triggers & Functions:
-  - [ ] Trigger to update reputation scores based on votes/arguments
+  - [x] Trigger to update reputation scores based on votes/arguments
   - [ ] Trigger to increment/decrement `opinions_count` on Zeroes
   - [ ] Function to compute "Cooking" feed trending score
 
@@ -112,7 +112,7 @@ This file tracks the implementation progress of **0pinion**, a monochrome, text-
   - [x] Create Opinion Screen with title/content/zeroes/anonymous toggle
   - [x] Opinion Detail Screen with debate zone (Support/Oppose/Question tabs)
   - [x] Write Argument Screen with position selector + anonymous toggle
-  - [x] Search Screen with Opinions/Zeroes/Users tabs
+  - [x] Search Screen with Opinions/Zeroes/Users tabs, search history caching, and custom placeholder
   - [x] Browse Zeroes Screen with join/leave state
 - [ ] Backend Integration:
   - [ ] Create/Edit/Delete opinions with Supabase
@@ -173,5 +173,24 @@ This file tracks the implementation progress of **0pinion**, a monochrome, text-
   - Custom capsule highlight background with opacity transitions on active tabs (using `AnimatedContainer` over 250ms).
   - Updated layout (June 13 Follow-up): Removed text labels and decreased the dock height to 60.0 with a corner radius of 30.0 for a more minimal, sleeker icon-only appearance.
   - Clean implementation without altering go_router routes, providers, or screen logic.
+
+### June 13, 2026 - Search History Caching & Custom Search Bar
+- **Change**: Added search history caching, delete button capability, and updated placeholder on the search screen.
+- **Details**:
+  - Imported and integrated the `shared_preferences` package.
+  - Replaced the search hint text with `"Search here"`.
+  - Added text field `onSubmitted` logic to save search entries dynamically.
+  - Renders a list of recent search entries (up to 10) in the empty state, complete with individual delete buttons and a global "Clear All" button.
+  - Tapping a search history entry triggers search and updates its priority order.
+
+### June 13, 2026 - Single-Stance Constraint & Argument Deletion
+- **Change**: Enforced a single-stance constraint (support/oppose limitation) per opinion, and enabled argument deletion for users.
+- **Details**:
+  - Appended a partial unique index `unique_user_stance_per_opinion` in `supabase_schema.sql` to restrict users to at most one Support or Oppose argument per opinion at the database layer.
+  - Added the `deleteArgument(String argumentId)` method in `argument_repository.dart` to perform delete queries.
+  - Refactored `_ArgumentTile` in `opinion_detail_screen.dart` to a `ConsumerWidget` to check the current user and display a confirmation dialog + "Delete" option for owned arguments.
+  - Implemented pre-submission check in `write_argument_screen.dart` to prevent submitting another stance if one is already active for the user.
+
+
 
 

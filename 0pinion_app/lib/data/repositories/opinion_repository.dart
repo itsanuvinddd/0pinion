@@ -42,7 +42,11 @@ class OpinionRepository {
       'author_id': authorId,
       'is_anonymous': isAnonymous,
       'is_cooking': false,
-      'zero_id': ?zeroId,
+      'zero_id': zeroId,
     });
+  }
+
+  Future<void> deleteOpinion(String opinionId) async {
+    await _supabase.from('opinions').delete().eq('id', opinionId);
   }
 }

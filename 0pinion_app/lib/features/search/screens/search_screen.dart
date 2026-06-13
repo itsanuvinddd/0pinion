@@ -1,8 +1,7 @@
-import 'package:opinion_app/core/widgets/video_refresh_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/opinion_card.dart';
@@ -23,6 +22,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
   String _query = '';
   bool _isLoading = false;
+  List<String> _searchHistory = [];
 
   // Results
   List<Opinion> _opinionResults = [];
@@ -33,9 +33,55 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   String _searchMode = 'all'; // 'all', 'users', 'zeroes'
 
   @override
+  void initState() {
+    super.initState();
+    _loadSearchHistory();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _searchHistory = prefs.getStringList('search_history') ?? [];
+      });
+    }
+  }
+
+  Future<void> _saveSearchHistory(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    _searchHistory.remove(trimmed);
+    _searchHistory.insert(0, trimmed);
+    if (_searchHistory.length > 10) {
+      _searchHistory = _searchHistory.sublist(0, 10);
+    }
+    await prefs.setStringList('search_history', _searchHistory);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _deleteHistoryItem(String item) async {
+    final prefs = await SharedPreferences.getInstance();
+    _searchHistory.remove(item);
+    await prefs.setStringList('search_history', _searchHistory);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _clearSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('search_history');
+    if (mounted) {
+      setState(() {
+        _searchHistory = [];
+      });
+    }
   }
 
   Future<void> _performSearch(String query) async {
@@ -157,8 +203,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 setState(() => _query = v);
                 _performSearch(v);
               },
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) {
+                  _saveSearchHistory(v);
+                }
+              },
               decoration: InputDecoration(
-                hintText: '@user  ·  0zero  ·  search opinions...',
+                hintText: 'Search here',
                 prefixIcon: Icon(Icons.search, color: secondaryText),
                 suffixIcon: _query.isNotEmpty
                     ? IconButton(
@@ -215,21 +266,88 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildEmptyState(Color secondaryText, Color primaryText) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.search, size: 48, color: secondaryText),
-          const SizedBox(height: 16),
-          Text('Search 0pinion', style: AppTypography.bodySemiBold(color: primaryText)),
-          const SizedBox(height: 8),
-          Text(
-            'Type @username to find users\nType 0topic to find zeroes\nOr just type to search opinions',
-            style: AppTypography.caption(color: secondaryText),
-            textAlign: TextAlign.center,
+    if (_searchHistory.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search, size: 48, color: secondaryText),
+            const SizedBox(height: 16),
+            Text('Search 0pinion', style: AppTypography.bodySemiBold(color: primaryText)),
+            const SizedBox(height: 8),
+            Text(
+              'Type @username to find users\nType 0topic to find zeroes\nOr just type to search opinions',
+              style: AppTypography.caption(color: secondaryText),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent Searches',
+                style: AppTypography.captionMedium(color: secondaryText),
+              ),
+              TextButton(
+                onPressed: _clearSearchHistory,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Clear All',
+                  style: AppTypography.captionMedium(color: primaryText),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: _searchHistory.length,
+            separatorBuilder: (context, index) => Divider(height: 1, color: borderColor.withValues(alpha: 0.5)),
+            itemBuilder: (context, index) {
+              final item = _searchHistory[index];
+              return ListTile(
+                dense: true,
+                leading: Icon(Icons.history, color: secondaryText, size: 20),
+                title: Text(
+                  item,
+                  style: AppTypography.body(color: primaryText).copyWith(fontSize: 14),
+                ),
+                trailing: IconButton(
+                  icon: Icon(Icons.close, color: secondaryText, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _deleteHistoryItem(item),
+                ),
+                onTap: () {
+                  _searchController.text = item;
+                  setState(() {
+                    _query = item;
+                  });
+                  _performSearch(item);
+                  _saveSearchHistory(item);
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

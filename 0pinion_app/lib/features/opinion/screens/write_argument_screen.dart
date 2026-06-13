@@ -164,6 +164,26 @@ class _WriteArgumentScreenState extends ConsumerState<WriteArgumentScreen> {
                         return;
                       }
 
+                      // Enforce single active position (Support or Oppose) per opinion
+                      if (_selectedType == ArgumentType.support || _selectedType == ArgumentType.oppose) {
+                        final argumentsAsync = ref.read(opinionArgumentsProvider(widget.opinionId));
+                        final existingArguments = argumentsAsync.value ?? [];
+                        
+                        final hasStance = existingArguments.any((arg) => 
+                          arg.authorId == user.id && 
+                          (arg.type == ArgumentType.support || arg.type == ArgumentType.oppose)
+                        );
+                        
+                        if (hasStance) {
+                          AppErrorHandler.showErrorDialog(
+                            context,
+                            'You have already submitted a position (Support/Oppose) for this opinion. '
+                            'To change your position, please delete your previous argument from the debate zone first.'
+                          );
+                          return;
+                        }
+                      }
+
                       try {
                         await ref.read(argumentRepositoryProvider).createArgument(
                           opinionId: widget.opinionId,

@@ -42,4 +42,8 @@ class ArgumentRepository {
       'is_anonymous': isAnonymous,
     });
   }
+
+  Future<void> deleteArgument(String argumentId) async {
+    await _supabase.from('arguments').delete().eq('id', argumentId);
+  }
 }

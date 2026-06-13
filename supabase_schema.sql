@@ -107,6 +107,9 @@ CREATE POLICY "Arguments are viewable by everyone" ON public.arguments
 -- Authenticated users can insert their own arguments
 CREATE POLICY "Users can insert own arguments" ON public.arguments
     FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) = author_id);
+-- Authenticated users can delete their own arguments
+CREATE POLICY "Users can delete own arguments" ON public.arguments
+    FOR DELETE TO authenticated USING ((select auth.uid()) = author_id);
 
 -- LIVE ROOMS & MESSAGES
 -- Public read
@@ -143,3 +146,62 @@ SELECT
     created_at,
     CASE WHEN is_anonymous THEN NULL ELSE author_id END AS author_id
 FROM public.arguments;
+
+-------------------------------------------------------------------
+-- REPUTATION SYSTEM TRIGGERS & FUNCTIONS
+-------------------------------------------------------------------
+
+-- Function to handle reputation changes based on opinions
+CREATE OR REPLACE FUNCTION public.handle_opinion_reputation()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE public.profiles
+        SET reputation_score = reputation_score + 5
+        WHERE id = NEW.author_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE public.profiles
+        SET reputation_score = reputation_score - 5
+        WHERE id = OLD.author_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for opinions
+CREATE OR REPLACE TRIGGER on_opinion_reputation
+AFTER INSERT OR DELETE ON public.opinions
+FOR EACH ROW EXECUTE FUNCTION public.handle_opinion_reputation();
+
+-- Function to handle reputation changes based on arguments
+CREATE OR REPLACE FUNCTION public.handle_argument_reputation()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE public.profiles
+        SET reputation_score = reputation_score + 10
+        WHERE id = NEW.author_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE public.profiles
+        SET reputation_score = reputation_score - 10
+        WHERE id = OLD.author_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for arguments
+CREATE OR REPLACE TRIGGER on_argument_reputation
+AFTER INSERT OR DELETE ON public.arguments
+FOR EACH ROW EXECUTE FUNCTION public.handle_argument_reputation();
+
+-------------------------------------------------------------------
+-- STANCE UNIQUE INDEX
+-------------------------------------------------------------------
+-- Ensures each user can have at most one active position (Support or Oppose) per opinion.
+-- If they want to change their stance, they must delete their existing stance argument first.
+CREATE UNIQUE INDEX unique_user_stance_per_opinion 
+ON public.arguments (opinion_id, author_id) 
+WHERE (type IN ('support', 'oppose'));
+
+
